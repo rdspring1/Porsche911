@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+const int MAX_ARGS = 128;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -32,12 +33,45 @@ process_execute (const char *file_name)
   tid_t tid;
 
   // Pass Arguments to the Process
+  void* stack_ptr = PHYS_BASE;
+  char arg_ptrs[MAX_ARGS];
+  int argc = 0;
+
+  // Arguments
   char *token, *save_ptr;
   for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
   {
-	  printf ("'%s'\n", token);
+	arg_ptrs[argc] = (stack_ptr -= sizeof(token));
+	strlcpy ((char*) stack_ptr, token, sizeof(token) / sizeof(char)); 
+	++argc;
   }
 
+  // word-align
+  int mod = 3 & ((int) stack_ptr);
+  stack_ptr -= mod * sizeof(uint8_t);
+  
+  // argv terminate
+  stack_ptr -= sizeof(char*);
+  *((char *) stack_ptr) = 0;
+
+  // argv elements
+  int i;
+  for(i = argc - 1; i >= 0; --argc)
+  {
+	stack_ptr -= sizeof(char*);
+	stack_ptr = arg_ptrs[i];
+  }
+  // argv
+  char** argv = stack_ptr;
+  stack_ptr -= sizeof(char*);
+  stack_ptr = argv;
+  // argc
+  stack_ptr -= sizeof(int);
+  *((int *) stack_ptr) = argc;
+
+  // Dummy Return Address
+  --stack_ptr;
+  *((char *) stack_ptr) = 0;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */

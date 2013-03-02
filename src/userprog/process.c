@@ -22,6 +22,99 @@ const int MAX_ARGS = 128;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+/* Returns the number of bytes needed to hold a string vector with the space
+   delimited segments of the string pointed to by *str_ptr. After returning, str_ptr
+   will point to the final element of the string, which should be '\0'. BDH */
+static int count_bytes(char **str_ptr) {
+  int num_bytes = 0;
+  short in_word = 0; // are we in a word?
+  char c;
+
+  while ((c = **str_ptr) != '\0') {
+    if (c != ' ') {
+      num_bytes++;
+      if (!in_word) {
+	num_bytes++; // extra bytes for the \0
+	in_word = 1;
+      }
+    } else
+      in_word = 0;
+
+    (*str_ptr)++;
+  }
+
+  return num_bytes;
+}
+
+/* pushes arguments onto the stack and returns. BDH */
+void push_arguments(int num_bytes, char *str_ptr, const char *base)
+{
+  int argc = 1;
+  short in_word = 1;
+  char c;
+  // DEBUG
+  // char *stack_ptr = PHYS_BASE + 64;
+  char *stack_ptr = PHYS_BASE; // initialize stack pointer for pushing
+  str_ptr++; // increment by one to use usual popping idiom
+  
+  /* rather than fooling with ugly and possibly dangerous casts, here we
+     can achieve alignment with a somewhat elegant mathematical mechanism.
+     since PHYS_BASE is guaranteed to be divisible by 4, we need only
+     ensure that num_bytes is as well before subtraction to achieve 
+     alignment */
+
+  int mod = num_bytes & 3;
+  num_bytes = (mod == 0 ? num_bytes : (num_bytes & ~3) + 4);
+
+  // DEBUG
+  // char **argv_ptr = PHYS_BASE + 64 - num_bytes;
+
+  // set up argv_ptr
+  char **argv_ptr = PHYS_BASE - num_bytes; // start of strings
+ 
+  *--argv_ptr = NULL; // push NULL address to terminate argv
+
+  /* we're going to read the chars from str_ptr 1 at a time, writing them to
+     memory if they're not spaces and creating a new entry in argv if they
+     are. This also assumes the only whitespace we can get is spaces. We count
+     the number of arguments by counting the number of 'words' in the line */
+  while (base < str_ptr) {
+    c = *--str_ptr;
+    
+    if (c != ' ') {
+
+      if (!in_word) {
+	argc++;
+	in_word = 1;
+	*--stack_ptr = '\0';
+      }
+      *--stack_ptr = c;
+
+    } else {
+      if (in_word) {
+	*--argv_ptr = stack_ptr; // push argv entry since no longer word
+      }
+      in_word = 0;
+    }
+  }
+
+  /* handle an edge case of leading spaces */
+  if (*str_ptr != ' ')
+    *--argv_ptr = stack_ptr;
+  
+  // write argv base address, two steps to minimize confusion
+  argv_ptr--;
+  *argv_ptr = argv_ptr + 1;
+
+  // just make a dummy int pointer to push argc
+  int *int_ptr = argv_ptr;
+  *--int_ptr = argc;
+
+  // make argv_ptr the value of int_ptr to push the dummy return address
+  argv_ptr = int_ptr;
+  *--argv_ptr = NULL;
+}
+	
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -32,47 +125,15 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  // Pass Arguments to the Process
-  void* stack_ptr = PHYS_BASE;
-  char arg_ptrs[MAX_ARGS];
-  int argc = 0;
-
-  // Arguments
-  char *token, *save_ptr;
-  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
-  {
-	arg_ptrs[argc] = (stack_ptr -= sizeof(token));
-	strlcpy ((char*) stack_ptr, token, sizeof(token) / sizeof(char)); 
-	++argc;
-  }
-
-  // word-align
-  int mod = 3 & ((int) stack_ptr);
-  stack_ptr -= mod * sizeof(uint8_t);
+  /* DEBUG
+  char *file_X = "/bin/ls -l foo bar";
+  char *str_ptr = file_X;
+  int num_bytes = count_bytes(&str_ptr);
+  push_arguments(num_bytes, str_ptr, file_X);
+  hex_dump(PHYS_BASE, PHYS_BASE, 64, 1);
+  ASSERT(0);
+  */
   
-  // argv terminate
-  stack_ptr -= sizeof(char*);
-  *((char *) stack_ptr) = 0;
-
-  // argv elements
-  int i;
-  for(i = argc - 1; i >= 0; --argc)
-  {
-	stack_ptr -= sizeof(char*);
-	stack_ptr = arg_ptrs[i];
-  }
-  // argv
-  char** argv = stack_ptr;
-  stack_ptr -= sizeof(char*);
-  stack_ptr = argv;
-  // argc
-  stack_ptr -= sizeof(int);
-  *((int *) stack_ptr) = argc;
-
-  // Dummy Return Address
-  --stack_ptr;
-  *((char *) stack_ptr) = 0;
-
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -243,6 +304,10 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
 
+/* nothing special about this number, but seems like a reasonable limit
+   especially since filenames are limited to 14 chars */
+#define MAX_NAME_LEN 32
+
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
@@ -257,6 +322,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /* Create a copy of the file name for the file opener.
+     This will fail if there are leading spaces, but that can be
+     addressed relatively easily if need be. BDH */
+  char fname[MAX_NAME_LEN];
+  char *s_ptr = file_name;
+
+  for (i = 0; (fname[i] = s_ptr[i]) != ' '; i++)
+    ;
+
+  fname[i] = '\0';
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -264,7 +340,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (fname);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -346,6 +422,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
+
+  /* push all arguments onto the user stack. BDH */
+  char *str_ptr = file_name;
+  int num_bytes = count_bytes(&str_ptr);
+  push_arguments(num_bytes, str_ptr, file_name);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;

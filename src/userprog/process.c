@@ -47,13 +47,13 @@ static int count_bytes(char **str_ptr) {
 }
 
 /* pushes arguments onto the stack and returns. BDH */
-void push_arguments(int num_bytes, char *str_ptr, const char *base)
+char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 {
   int argc = 1;
   short in_word = 1;
   char c;
   // DEBUG
-  // char *stack_ptr = PHYS_BASE + 64;
+  //char *stack_ptr = PHYS_BASE + 64;
   char *stack_ptr = PHYS_BASE; // initialize stack pointer for pushing
   str_ptr++; // increment by one to use usual popping idiom
   
@@ -70,8 +70,7 @@ void push_arguments(int num_bytes, char *str_ptr, const char *base)
   // char **argv_ptr = PHYS_BASE + 64 - num_bytes;
 
   // set up argv_ptr
-  char **argv_ptr = PHYS_BASE - num_bytes; // start of strings
- 
+  char **argv_ptr = PHYS_BASE - num_bytes; // start of strings 
   *--argv_ptr = NULL; // push NULL address to terminate argv
 
   /* we're going to read the chars from str_ptr 1 at a time, writing them to
@@ -113,6 +112,7 @@ void push_arguments(int num_bytes, char *str_ptr, const char *base)
   // make argv_ptr the value of int_ptr to push the dummy return address
   argv_ptr = int_ptr;
   *--argv_ptr = NULL;
+  return argv_ptr;
 }
 	
 /* Starts a new thread running a user program loaded from
@@ -125,15 +125,6 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  /* DEBUG
-  char *file_X = "/bin/ls -l foo bar";
-  char *str_ptr = file_X;
-  int num_bytes = count_bytes(&str_ptr);
-  push_arguments(num_bytes, str_ptr, file_X);
-  hex_dump(PHYS_BASE, PHYS_BASE, 64, 1);
-  ASSERT(0);
-  */
-  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -234,7 +225,6 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -426,7 +416,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* push all arguments onto the user stack. BDH */
   char *str_ptr = file_name;
   int num_bytes = count_bytes(&str_ptr);
-  push_arguments(num_bytes, str_ptr, file_name);
+  *esp = push_arguments(num_bytes, str_ptr, file_name);
+  hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
+
+  /***************** ARGS PASSING TEST CODE *******************
+  char *file_test = "/bin/ls -l foo bar";
+  char *str_ptr = file_test;
+  int num_bytes = count_bytes(&str_ptr);
+  hex_dump((uintptr_t)* esp, *esp, 1, true);
+  *esp = push_arguments(num_bytes, str_ptr, file_test);
+  hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
+  ************************************************************/
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;

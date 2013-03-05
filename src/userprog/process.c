@@ -182,6 +182,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+    while(1);
   return -1;
 }
 
@@ -417,6 +418,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *str_ptr = file_name;
   int num_bytes = count_bytes(&str_ptr);
   *esp = push_arguments(num_bytes, str_ptr, file_name);
+  printf("HelloWorld\n");
   hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
 
   /***************** ARGS PASSING TEST CODE *******************

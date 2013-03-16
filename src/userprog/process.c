@@ -327,7 +327,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *str_ptr = file_name;
   int num_bytes = count_bytes(&str_ptr);
   *esp = push_arguments(num_bytes, str_ptr, file_name);
-  printf("HelloWorld\n");
   hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
 
   /***************** ARGS PASSING TEST CODE *******************
@@ -511,9 +510,8 @@ static int count_bytes(char **str_ptr)
 	while ((c = **str_ptr) != '\0') {
 		if (c != ' ') {
 			if (!in_word) {
-				++argc;
 				if(num_bytes < (MAX_NUM_BYTES - argc * 4))
-					++num_bytes; // extra byte for the \0
+					++num_bytes; // extra bytes for the \0
 				in_word = 1;
 			}
 			if(num_bytes < (MAX_NUM_BYTES - argc * 4))
@@ -521,9 +519,11 @@ static int count_bytes(char **str_ptr)
 		} else {
 			in_word = 0;
 		}
+
 		++(*str_ptr);
 	}
-  return num_bytes;
+
+	return num_bytes;
 }
 
 /* pushes arguments onto the stack and returns. BDH */
@@ -535,17 +535,20 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	// DEBUG
 	//char *stack_ptr = PHYS_BASE + 64;
 	char *stack_ptr = PHYS_BASE; // initialize stack pointer for pushing
-	str_ptr++; // increment by one to use usual popping paradigm
+	str_ptr++; // increment by one to use usual popping idiom
 
 	/* rather than fooling with ugly and possibly dangerous casts, here we
-	 can achieve alignment with a somewhat elegant mathematical mechanism.
-	 since PHYS_BASE is guaranteed to be divisible by 4, we need only
-	 ensure that num_bytes is as well before subtraction to achieve 
-	 alignment */
+	   can achieve alignment with a somewhat elegant mathematical mechanism.
+	   since PHYS_BASE is guaranteed to be divisible by 4, we need only
+	   ensure that num_bytes is as well before subtraction to achieve 
+	   alignment */
 
 	int mod = num_bytes & 3;
 	num_bytes = (mod == 0 ? num_bytes : (num_bytes & ~3) + 4);
-	
+
+	// DEBUG
+	// char **argv_ptr = PHYS_BASE + 64 - num_bytes;
+
 	// set up argv_ptr
 	char **argv_ptr = PHYS_BASE - num_bytes; // start of strings 
 	*--argv_ptr = NULL; // push NULL address to terminate argv
@@ -553,21 +556,23 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	int argsize = 0;
 	const int maxsize = num_bytes;
 	/* we're going to read the chars from str_ptr 1 at a time, writing them to
-	memory if they're not spaces and creating a new entry in argv if they
-	are. This also assumes the only whitespace we can get is spaces. We count
-	the number of arguments by counting the number of 'words' in the line */
+	   memory if they're not spaces and creating a new entry in argv if they
+	   are. This also assumes the only whitespace we can get is spaces. We count
+	   the number of arguments by counting the number of 'words' in the line */
 	while (base < str_ptr && argsize < maxsize) {
 		c = *--str_ptr;
+
 		if (c != ' ') {
+
 			if (!in_word) {
-				++argc;
+				argc++;
 				in_word = 1;
 				*--stack_ptr = '\0';
 				++argsize;
 			}
 			if(argsize < maxsize)
 			{
-				*--stack_ptr = '\0';
+				*--stack_ptr = c;
 				++argsize;
 			}
 		} else {
@@ -578,21 +583,21 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 		}
 	}
 
-  /* handle an edge case of leading spaces */
-  if (*str_ptr != ' ')
-    *--argv_ptr = stack_ptr;
-  
-  // write argv base address, two steps to minimize confusion
-  argv_ptr--;
-  *argv_ptr = argv_ptr + 1;
+	/* handle an edge case of leading spaces */
+	if (*str_ptr != ' ')
+		*--argv_ptr = stack_ptr;
 
-  // just make a dummy int pointer to push argc
-  int *int_ptr = argv_ptr;
-  *--int_ptr = argc;
+	// write argv base address, two steps to minimize confusion
+	argv_ptr--;
+	*argv_ptr = argv_ptr + 1;
 
-  // make argv_ptr the value of int_ptr to push the dummy return address
-  argv_ptr = int_ptr;
-  *--argv_ptr = NULL;
-  return argv_ptr;
+	// just make a dummy int pointer to push argc
+	int *int_ptr = argv_ptr;
+	*--int_ptr = argc;
+
+	// make argv_ptr the value of int_ptr to push the dummy return address
+	argv_ptr = int_ptr;
+	*--argv_ptr = NULL;
+	return argv_ptr;
 }
-	
+

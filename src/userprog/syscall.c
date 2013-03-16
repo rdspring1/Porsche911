@@ -20,7 +20,7 @@ static void* next_ptr(uintptr_t** sp);
 /* Get Kernel Physical Address from User Virtual Address; 
    otherwise return null pointer*/
 static void*
-convert_uvaddr_kpaddr (const void *uaddr)
+convert_uvaddr_kpaddr (const void* uaddr)
 {
   	if(uaddr != NULL)
 	{
@@ -29,7 +29,7 @@ convert_uvaddr_kpaddr (const void *uaddr)
          	void* kvaddr = pagedir_get_page(thread_current()->pagedir, uaddr);
 		    if(kvaddr != NULL)
 		    {
-			   return (void*) vtop(kvaddr);
+			   	return (void*) vtop(kvaddr);
 		    }
         }
   	} 
@@ -45,10 +45,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame* frame) 
 {
-	  printf ("system call!\n");
-	    thread_exit ();
-
-	/**********************************************************
 	// -------- System Call Handler Overview -------- 
 	// Get system call number
 	// switch statement using system call number
@@ -57,7 +53,8 @@ syscall_handler (struct intr_frame* frame)
 	// set frame->eax to return value if necessary
 	// ----------------------------------------------
 	
-	uintptr_t* kpaddr_sp = (uintptr_t*) convert_uvaddr_kpaddr(frame->esp);
+	//uintptr_t* kpaddr_sp = (uintptr_t*) convert_uvaddr_kpaddr(frame->esp);
+	uintptr_t* kpaddr_sp = (uintptr_t*) frame->esp;
 	uintptr_t syscall_num = next_value(&kpaddr_sp);
 	switch(syscall_num)
 	{
@@ -70,51 +67,66 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_EXIT:                 
 		{
 			frame->error_code = next_value(&kpaddr_sp);
-			process_exit();
+			thread_exit();
 		}
 		break;
 		case SYS_EXEC:               
 		{
 			//pid_t exec (const char *file);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_WAIT:              
 		{
 			//int wait (pid_t);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_CREATE:           
 		{
 			//bool create (const char *file, unsigned initial_size);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_REMOVE:         
 		{
 			//bool remove (const char *file);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_OPEN:          
 		{
 			//int open (const char *file);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_FILESIZE:     
 		{
 			//int filesize (int fd);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_READ:        
 		{
 			//int read (int fd, void *buffer, unsigned length);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_WRITE:      
 		{
 			//int write (int fd, const void *buffer, unsigned length);
-			uintptr_t df = next_value(&kpaddr_sp);
+			uintptr_t fd = next_value(&kpaddr_sp);
 			char* buffer = next_charptr(&kpaddr_sp);
 			uintptr_t length = next_value(&kpaddr_sp);
-			if(df == CONSOLEWRITE) // Write to Console
+
+			if(fd == CONSOLEWRITE) // Write to Console
 			{
 				while(length > 0)
 				{
@@ -136,20 +148,25 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_SEEK:
 		{
 			//void seek (int fd, unsigned position);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_TELL:
 		{
 			//unsigned tell (int fd);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 		case SYS_CLOSE:    
 		{
 			//void close (int fd);
+			printf("Unimplemented Call\n");
+			thread_exit();
 		}
 		break;
 	}
-	*********************************************************************/
 }
 
 static uintptr_t

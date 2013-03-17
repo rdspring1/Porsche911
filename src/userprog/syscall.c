@@ -15,13 +15,13 @@ static void syscall_handler (struct intr_frame *);
 /* Get Kernel Physical Address from User Virtual Address; 
    otherwise return null pointer*/
 static void *
-convert_uvaddr_kpaddr (const void *uaddr)
+convert_uvaddr_kpaddr (uint32_t* pagedir, const void *uaddr)
 {
   	if(uaddr != null)
 	{
   		if(is_user_vaddr(uaddr))
 		{
-         void* kvaddr = pagedir_get_page(thread_current()->pagedir, uaddr);
+         void* kvaddr = pagedir_get_page(pagedir, uaddr);
 		    if(kvadd != null)
 		    {
 			   return vtop(kvaddr);
@@ -47,8 +47,8 @@ syscall_handler (struct intr_frame *f frame)
 	// call system call function
 	// set frame->eax to return value if necessary
 	// ----------------------------------------------
-	
-	uint32_t** kpaddr_sp = &((uint32_t*) convert_uvaddr_kpaddr(frame->esp));
+	struct thread* userthread = pg_round_down (frame->esp);
+	uint32_t** kpaddr_sp = &((uint32_t*) convert_uvaddr_kpaddr(userthread->pagedir, frame->esp));
 	uint32_t syscall_num = next_int(kpaddr_sp);
 	switch(syscall_num)
 	{
@@ -58,7 +58,7 @@ syscall_handler (struct intr_frame *f frame)
 		break;
 		case SYS_EXIT:                   /* Terminate this process. */
 			frame->error_code = next_int(kpaddr_sp);
-			process_exit();
+			thread_exit();
 		break;
 		case SYS_EXEC:                   /* Start another process. */
 			//pid_t exec (const char *file);

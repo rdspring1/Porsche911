@@ -91,9 +91,9 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-    while(1);
+  while(1);
   return -1;
 }
 
@@ -226,7 +226,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
      This will fail if there are leading spaces, but that can be
      addressed relatively easily if need be. BDH */
   char fname[MAX_NAME_LEN];
-  char *s_ptr = file_name;
+  char* s_ptr = (char*) file_name;
 
   for (i = 0; (fname[i] = s_ptr[i]) != ' '; i++)
     ;
@@ -324,7 +324,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
 
   /* push all arguments onto the user stack. BDH */
-  char *str_ptr = file_name;
+  char* str_ptr = (char*) file_name;
   int num_bytes = count_bytes(&str_ptr);
   *esp = push_arguments(num_bytes, str_ptr, file_name);
   hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
@@ -589,14 +589,14 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 
 	// write argv base address, two steps to minimize confusion
 	argv_ptr--;
-	*argv_ptr = argv_ptr + 1;
+	*argv_ptr = (char*) argv_ptr + 1;
 
 	// just make a dummy int pointer to push argc
-	int *int_ptr = argv_ptr;
+	int* int_ptr = (int*) argv_ptr;
 	*--int_ptr = argc;
 
 	// make argv_ptr the value of int_ptr to push the dummy return address
-	argv_ptr = int_ptr;
+	argv_ptr = (char**) int_ptr;
 	*--argv_ptr = NULL;
 	return argv_ptr;
 }

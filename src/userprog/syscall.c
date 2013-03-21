@@ -285,6 +285,12 @@ sysexec(struct intr_frame* frame, const char* file)
 	lock_acquire(&exec_lock);
 	tid_t newpid = process_execute(file);
 	frame->eax = newpid;
+	if(newpid != TID_ERROR)
+	{
+		struct child;
+		child.childid = (pid_t) newpid;
+		list_push_back(&thread_current()->child_list, &child.elem);
+	}
 	lock_release(&exec_lock);
 }
 

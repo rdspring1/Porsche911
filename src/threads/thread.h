@@ -5,6 +5,12 @@
 #include <list.h>
 #include <stdint.h>
 
+struct child
+{
+	struct list_elem elem;
+	pid_t childid;
+};
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -89,6 +95,9 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+
+    // Process
+    struct list child_list;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

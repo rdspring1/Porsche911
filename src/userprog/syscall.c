@@ -7,16 +7,32 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 
-const int MAX_SIZE = 256;
-const int CONSOLEWRITE = 1;
+const unsigned MAX_SIZE = 256;
+const unsigned CONSOLEWRITE = 1;
+const unsigned CONSOLEREAD = 0;
 
-static void syscall_handler (struct intr_frame *);
+static void syscall_handler (struct intr_frame* frame);
+static void exitcmd(void);
+
+// User Memory Check
 static bool check_uptr(const void* uptr);
-static intptr_t next_value(intptr_t** sp);
-static char* next_charptr(intptr_t** sp);
-static void* next_ptr(intptr_t** sp);
+static uintptr_t next_value(uintptr_t** sp);
+static char* next_charptr(uintptr_t** sp);
+static void* next_ptr(uintptr_t** sp);
+
+// Locks
+static struct lock exec_lock;
+static struct lock filecreate_lock;
+static struct lock fileremove_lock;
+
+// Syscall Functions
+static void sysexec(struct intr_frame* frame, const char* file);
+static void syscreate(struct intr_frame* frame, const char* file, unsigned size);
+static void sysremove(struct intr_frame* frame, const char* file);
 
 /* Determine whether user process pointer is valid;
    Otherwise, return false*/ 
@@ -34,12 +50,17 @@ check_uptr (const void* uptr)
 			}
 		}
 	} 
-	return NULL;
+	return false;
 }
 
 void
 syscall_init (void) 
 {
+	// Initialize Locks
+	lock_init(&exec_lock);
+	lock_init(&filecreate_lock);
+	lock_init(&fileremove_lock);
+
 	intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -53,10 +74,12 @@ syscall_handler (struct intr_frame* frame)
 	// call system call function
 	// set frame->eax to return value if necessary
 	// ----------------------------------------------
-	intptr_t* kpaddr_sp = (intptr_t*) frame->esp;
+	uintptr_t* kpaddr_sp = (uintptr_t*) frame->esp;
 	int syscall_num = -1;
 	if(check_uptr(kpaddr_sp))
 		syscall_num = next_value(&kpaddr_sp);
+	else
+		exitcmd();
 
 	switch(syscall_num)
 	{
@@ -69,70 +92,87 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_EXIT:                 
 			{
 				frame->error_code = next_value(&kpaddr_sp);
-				thread_exit();
+				exitcmd();
 			}
 			break;
-		case SYS_EXEC:               
+		case SYS_EXEC:  //pid_t exec (const char *file);
 			{
-				//pid_t exec (const char *file);
-				printf("Unimplemented Call\n");
-				thread_exit();
+				const char* file = next_charptr(&kpaddr_sp);
+				if(file == NULL)
+					exitcmd();
+				else
+					sysexec(frame, file);
 			}
 			break;
-		case SYS_WAIT:              
+		case SYS_WAIT:  //int wait (pid_t);
 			{
-				//int wait (pid_t);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
-		case SYS_CREATE:           
+		case SYS_CREATE:	//bool create (const char *file, unsigned initial_size);
 			{
-				//bool create (const char *file, unsigned initial_size);
-				printf("Unimplemented Call\n");
-				thread_exit();
+				const char* file =  next_charptr(&kpaddr_sp);
+				if(file == NULL)
+					exitcmd();
+
+				uintptr_t size = 0;
+				if(check_uptr(kpaddr_sp))
+					size = next_value(&kpaddr_sp);
+				else
+					exitcmd();
+
+				syscreate(frame, file, size);
 			}
 			break;
-		case SYS_REMOVE:         
+		case SYS_REMOVE:	//bool remove (const char *file);
 			{
-				//bool remove (const char *file);
-				printf("Unimplemented Call\n");
-				thread_exit();
+				const char* file =  next_charptr(&kpaddr_sp);
+				if(file == NULL)
+					exitcmd();
+
+				sysremove(frame, file);
 			}
 			break;
 		case SYS_OPEN:          
 			{
 				//int open (const char *file);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		case SYS_FILESIZE:     
 			{
 				//int filesize (int fd);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		case SYS_READ:        
 			{
 				//int read (int fd, void *buffer, unsigned length);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		case SYS_WRITE:      
 			{
 				//int write (int fd, const void *buffer, unsigned length);
-				intptr_t fd = -1;
+				uintptr_t fd = 0;
 				if(check_uptr(kpaddr_sp))
 					fd = next_value(&kpaddr_sp);
+				else
+					exitcmd();
 
 				char* buffer = next_charptr(&kpaddr_sp);
+				if(buffer == NULL)
+					exitcmd();
 
-				intptr_t length = -1;
+				uintptr_t length = 0;
 				if(check_uptr(kpaddr_sp))
 					length = next_value(&kpaddr_sp);
+				else
+					exitcmd();
 
 				if(fd == CONSOLEWRITE) // Write to Console
 				{
@@ -157,44 +197,44 @@ syscall_handler (struct intr_frame* frame)
 			{
 				//void seek (int fd, unsigned position);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		case SYS_TELL:
 			{
 				//unsigned tell (int fd);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		case SYS_CLOSE:    
 			{
 				//void close (int fd);
 				printf("Unimplemented Call\n");
-				thread_exit();
+				exitcmd();
 			}
 			break;
 		default:
 			{
 				printf("Unrecognized System Call\n");
-				thread_exit();
+				exitcmd();
 			}
 		break;
 	}
 }
 
-static intptr_t
-next_value(intptr_t** sp)
+static uintptr_t
+next_value(uintptr_t** sp)
 {
-	intptr_t* ptr = *sp;
-	intptr_t value = *ptr;
+	uintptr_t* ptr = *sp;
+	uintptr_t value = *ptr;
 	++ptr;
 	*sp = ptr;
 	return value;
 }
 
 static char*
-next_charptr(intptr_t** sp)
+next_charptr(uintptr_t** sp)
 {
 	char* charptr = (char*) next_value(sp);
 	if(check_uptr(charptr))
@@ -204,11 +244,45 @@ next_charptr(intptr_t** sp)
 }
 
 static void*
-next_ptr(intptr_t** sp)
+next_ptr(uintptr_t** sp)
 {
 	void* voidptr = (void*) next_value(sp);
 	if(check_uptr(voidptr))
 		return voidptr;
 	else
 		return NULL;
+}
+
+static void
+exitcmd()
+{
+	// Print Process Termination Message
+	thread_exit();
+}
+
+static void
+sysexec(struct intr_frame* frame, const char* file)
+{
+	lock_acquire(&exec_lock);
+	tid_t newpid = process_execute(file);
+	frame->eax = newpid;
+	lock_release(&exec_lock);
+}
+
+static void
+syscreate(struct intr_frame* frame, const char* file, unsigned size)
+{
+	lock_acquire(&filecreate_lock);
+	bool result = filesys_create(file, size);
+	frame->eax = result;
+	lock_release(&filecreate_lock);
+}
+
+static void 
+sysremove(struct intr_frame* frame, const char* file)
+{
+	lock_acquire(&fileremove_lock);
+	bool result = filesys_remove(file);
+	frame->eax = result;
+	lock_release(&fileremove_lock);
 }

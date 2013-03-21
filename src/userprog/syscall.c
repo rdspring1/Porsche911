@@ -10,6 +10,7 @@
 #include "threads/synch.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
+#include "lib/string.h"
 
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
@@ -20,6 +21,7 @@ static void exitcmd(void);
 
 // User Memory Check
 static bool check_uptr(const void* uptr);
+static bool check_buffer(void* uptr);
 static uintptr_t next_value(uintptr_t** sp);
 static char* next_charptr(uintptr_t** sp);
 static void* next_ptr(uintptr_t** sp);
@@ -51,6 +53,18 @@ check_uptr (const void* uptr)
 		}
 	} 
 	return false;
+}
+
+static bool
+check_buffer (char* uptr, unsigned length)
+{
+	for(unsigned i = 0; i < length; ++i)
+	{
+		if(!check_uptr(uptr))
+			return false;
+		++uptr;
+	}
+	return true;
 }
 
 void
@@ -98,7 +112,8 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_EXEC:  //pid_t exec (const char *file);
 			{
 				const char* file = next_charptr(&kpaddr_sp);
-				if(file == NULL)
+				unsigned size = strlen(file);
+				if(!check_buffer(file, size) && file == NULL)
 					exitcmd();
 				else
 					sysexec(frame, file);
@@ -113,7 +128,8 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_CREATE:	//bool create (const char *file, unsigned initial_size);
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
-				if(file == NULL)
+				unsigned size = strlen(file);
+				if(!check_buffer(file, size) && file == NULL)
 					exitcmd();
 
 				uintptr_t size = 0;
@@ -128,7 +144,8 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_REMOVE:	//bool remove (const char *file);
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
-				if(file == NULL)
+				unsigned size = strlen(file);
+				if(!check_buffer(file, size) && file == NULL)
 					exitcmd();
 
 				sysremove(frame, file);
@@ -165,7 +182,8 @@ syscall_handler (struct intr_frame* frame)
 					exitcmd();
 
 				char* buffer = next_charptr(&kpaddr_sp);
-				if(buffer == NULL)
+				unsigned size = strlen(buffer);
+				if(check_buffer(buffer, size) && buffer == NULL)
 					exitcmd();
 
 				uintptr_t length = 0;

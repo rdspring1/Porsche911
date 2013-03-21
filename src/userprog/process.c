@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -93,8 +94,22 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-	while(1);
-	return -1;
+	int retval = -1;
+	lock_acquire(&pwait_lock);
+	// Check Validity of TID - A member of child list
+	if(validTID(child_tid))
+	{
+		// Check if TID is a member of wait list
+		if(checkWaitList(thread_current(), child_tid))
+		{
+			while(checkCTID(child_tid))
+				cond_wait(&pwait_cond, &pwait_lock);
+
+			// Set retval to correct exit status
+		}
+	}
+	lock_release(&pwait_lock);
+	return retval;
 }
 
 /* Free the current process's resources. */

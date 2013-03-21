@@ -71,7 +71,11 @@ check_buffer (const char* uptr, unsigned length)
 void
 syscall_init (void) 
 {
-	// Initialize Locks
+	// Initialize Public Locks
+	cond_init(&pwait_cond);
+	lock_init(&pwait_lock);
+
+	// Initialize Private Locks
 	lock_init(&exec_lock);
 	lock_init(&filecreate_lock);
 	lock_init(&fileremove_lock);
@@ -275,8 +279,12 @@ next_ptr(uintptr_t** sp)
 static void
 exitcmd()
 {
-	// Print Process Termination Message
-	thread_exit();
+	lock_acquire(&pwait_lock);
+		// Print Process Termination Message
+		// Save exit status
+		cond_broadcast(&pwait_cond, &pwait_lock);
+		thread_exit();
+	lock_release(&pwait_lock);
 }
 
 static void
@@ -287,8 +295,8 @@ sysexec(struct intr_frame* frame, const char* file)
 	frame->eax = newpid;
 	if(newpid != TID_ERROR)
 	{
-		struct child;
-		child.childid = (pid_t) newpid;
+		struct childproc child;
+		child.childid = newpid;
 		list_push_back(&thread_current()->child_list, &child.elem);
 	}
 	lock_release(&exec_lock);

@@ -11,6 +11,7 @@
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
 #include "lib/string.h"
+#include "userprog/fdt.h"
 
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
@@ -34,6 +35,7 @@ static struct lock fileremove_lock;
 // Syscall Functions
 static void sysexec(struct intr_frame* frame, const char* file);
 static void syscreate(struct intr_frame* frame, const char* file, unsigned size);
+static void sysopen(struct intr_frame *frame, const char *file);
 static void sysremove(struct intr_frame* frame, const char* file);
 
 /* Determine whether user process pointer is valid;
@@ -145,18 +147,21 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_REMOVE:	//bool remove (const char *file);
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
+				/* WARN: strlen could march off into potentially bad addresses. BDH */
 				unsigned len = strlen(file);
+				// WARN: Why is this error check configured the way it is? BDH
 				if(!check_buffer(file, len) && file == NULL)
 					exitcmd();
 
 				sysremove(frame, file);
 			}
 			break;
-		case SYS_OPEN:          
+		case SYS_OPEN:  //int open (const char *file);
 			{
-				//int open (const char *file);
-				printf("Unimplemented Call\n");
-				exitcmd();
+			  const char *file = next_charptr(&kpaddr_sp);
+			  // WARN: assuming here that the entire string is in safe code. BDH
+			  
+			  sysopen(frame, file);
 			}
 			break;
 		case SYS_FILESIZE:     
@@ -247,8 +252,7 @@ next_value(uintptr_t** sp)
 {
 	uintptr_t* ptr = *sp;
 	uintptr_t value = *ptr;
-	++ptr;
-	*sp = ptr;
+	*sp = ++ptr;
 	return value;
 }
 
@@ -275,8 +279,9 @@ next_ptr(uintptr_t** sp)
 static void
 exitcmd()
 {
-	// Print Process Termination Message
-	thread_exit();
+  // Print Process Termination Message
+  // there should also be a call to process_exit for cleanup. BDH
+  thread_exit();
 }
 
 static void
@@ -287,7 +292,7 @@ sysexec(struct intr_frame* frame, const char* file)
 	frame->eax = newpid;
 	if(newpid != TID_ERROR)
 	{
-		struct child;
+		struct child child;
 		child.childid = (pid_t) newpid;
 		list_push_back(&thread_current()->child_list, &child.elem);
 	}
@@ -301,6 +306,19 @@ syscreate(struct intr_frame* frame, const char* file, unsigned size)
 	bool result = filesys_create(file, size);
 	frame->eax = result;
 	lock_release(&filecreate_lock);
+}
+
+static void
+sysopen(struct intr_frame *frame, const char *filename)
+{
+  // Shouldn't need locks for opening files. BDH
+  struct file *f; // pointer to opened file
+  
+  f = filesys_open(filename);
+
+  /* returns fd value of -1 if f was null, otherwise allocate a new fd,
+     which could also be -1 in case of error. BDH */
+  frame->eax = (f == NULL ? -1 : fd_create(f));
 }
 
 static void 

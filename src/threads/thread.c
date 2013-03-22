@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/fdt.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -206,6 +207,9 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
+
+  /* Set to ensure no weird value ends up in threads that don't use a FDT. BDH */
+  t->fdt = NULL;
 
   /* Add to run queue. */
   thread_unblock (t);

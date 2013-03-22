@@ -4,6 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "userprog/fdt.h"
+
+typedef int pid_t;
 
 struct child
 {
@@ -96,8 +99,9 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-    // Process
+    /* Owned by userprog/process.c (or syscall.c). BDH */
     struct list child_list;
+    fdt_t fdt;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

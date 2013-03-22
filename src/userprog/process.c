@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/fdt.h"
 
 const int MAX_NUM_BYTES = 4080;
 
@@ -55,6 +56,9 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  /* Initialized here because kernel threads not running user programs don't use a FDT. BDH */
+  thread_current()->fdt = fdt_init(FDT_MAX_FILES);
+
 	char *file_name = file_name_;
 	struct intr_frame if_;
 	bool success;
@@ -103,6 +107,8 @@ process_exit (void)
 {
 	struct thread *cur = thread_current ();
 	uint32_t *pd;
+
+	fdt_destroy(cur->fdt); // release resources of file descriptor table
 
 	/* Destroy the current process's page directory and switch back
 	   to the kernel-only page directory. */

@@ -19,11 +19,25 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+struct exitstatus
+{
+	bool avail;
+	int status;
+	tid_t childid;
+};
+
 const int MAX_NUM_BYTES = 4080;
+unsigned waitproc;
 
 // Additional Function Prototypes
 static int count_bytes(char **str_ptr);
 char** push_arguments(int num_bytes, char *str_ptr, const char *base);
+
+bool validCTID(tid_t child_tid);
+bool checkWaitList(tid_t child_tid);
+bool checkCTID(tid_t child_tid);
+int getCTID(tid_t child_tid);
+void checkExitStatus(struct thread * t, void * aux);
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -49,6 +63,8 @@ process_execute (const char *file_name)
 	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy); 
+	else
+		addChildProc(tid);
 	return tid;
 }
 
@@ -95,20 +111,26 @@ int
 process_wait (tid_t child_tid) 
 {
 	int retval = -1;
-	lock_acquire(&pwait_lock);
+
 	// Check Validity of TID - A member of child list
-	if(validTID(child_tid))
+	if(validCTID(child_tid))
 	{
 		// Check if TID is a member of wait list
-		if(checkWaitList(thread_current(), child_tid))
+		if(!checkWaitList(child_tid))
 		{
-			while(checkCTID(child_tid))
-				cond_wait(&pwait_cond, &pwait_lock);
+			struct childproc child;
+			child.childid = child_tid;
+			list_push_back(&thread_current()->wait_list, &child.elem);
+
+			++waitproc;
+			while(!checkCTID(child_tid))
+				sema_down(&pwait_sema);
+			--waitproc;
 
 			// Set retval to correct exit status
+			retval = getCTID(child_tid);
 		}
 	}
-	lock_release(&pwait_lock);
 	return retval;
 }
 
@@ -616,3 +638,90 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	return argv_ptr;
 }
 
+bool validCTID(tid_t child_tid)
+{
+	struct list_elem *e;
+	if(thread_current()->numchild > 0)
+	{
+		for (e = list_begin (&thread_current()->child_list); e != list_end (&thread_current()->child_list); e = list_next (e))
+		{
+			struct childproc * c = list_entry (e, struct childproc, elem);
+			if(c->childid == child_tid)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool checkWaitList(tid_t child_tid)
+{
+	struct list_elem *e;
+	if(thread_current()->numchild > 0)
+	{
+		for (e = list_begin (&thread_current()->wait_list); e != list_end (&thread_current()->wait_list); e = list_next (e))
+		{
+			struct childproc * c = list_entry (e, struct childproc, elem);
+			if(c->childid == child_tid)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool checkCTID(tid_t child_tid)
+{
+	enum intr_level old_level;
+
+	struct exitstatus es;
+	es.avail = false;
+	es.status = -1;
+	es.childid = child_tid;
+
+	old_level = intr_disable();
+
+	thread_foreach(checkExitStatus, (void *) &es);
+
+	intr_set_level (old_level);
+	return es.avail;
+}
+
+int getCTID(tid_t child_tid)
+{
+	enum intr_level old_level;
+
+	struct exitstatus es;
+	es.avail = false;
+	es.status = -1;
+	es.childid = child_tid;
+
+	old_level = intr_disable();
+
+	thread_foreach(checkExitStatus, (void*) &es);
+
+	intr_set_level (old_level);
+	return es.status;
+}
+
+void checkExitStatus(struct thread * t, void * aux)
+{
+	struct exitstatus * es = (struct exitstatus *) aux;
+	if(t->tid == es->childid)
+	{
+		es->avail = t->exitset;
+		es->status = t->exitstatus;
+	}
+}
+
+void addChildProc(tid_t childid)
+{
+	if(thread_current()->numchild == 0)
+	{
+  		list_init(&thread_current()->child_list);
+  		list_init(&thread_current()->wait_list);
+	}
+
+	struct childproc child;
+	child.childid = childid;
+	list_push_back(&thread_current()->child_list, &child.elem);
+	++thread_current()->numchild;
+}

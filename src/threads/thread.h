@@ -96,9 +96,12 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-    // Process
+    // ------------ System Call ------------
+	int numchild;
     struct list child_list;
 	struct list wait_list;
+	bool exitset;
+	int exitstatus;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

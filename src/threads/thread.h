@@ -4,15 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "userprog/fdt.h"
-
-typedef int pid_t;
-
-struct child
-{
-	struct list_elem elem;
-	pid_t childid;
-};
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -27,6 +18,20 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+
+struct childproc
+{
+	tid_t childid;
+	struct list_elem elem;
+};
+
+struct exitstatus
+{
+	bool avail;
+	int status;
+	tid_t childid;
+	struct list_elem elem;
+};
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -94,14 +99,17 @@ struct thread
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
+    char name[32];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Owned by userprog/process.c (or syscall.c). BDH */
+    // ------------ System Call ------------
+	int numchild;
     struct list child_list;
-    fdt_t fdt;
+	struct list wait_list;
+	bool exitset;
+	int exitstatus;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

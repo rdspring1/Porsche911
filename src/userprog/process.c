@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -21,9 +22,19 @@
 
 const int MAX_NUM_BYTES = 4080;
 
+// Extern
+unsigned waitproc;
+struct semaphore pwait_sema;
+
 // Additional Function Prototypes
 static int count_bytes(char **str_ptr);
 char** push_arguments(int num_bytes, char *str_ptr, const char *base);
+
+bool validCTID(tid_t child_tid);
+bool checkWaitList(tid_t child_tid);
+bool checkCTID(tid_t child_tid);
+int getCTID(tid_t child_tid);
+void getExitStatus(struct exitstatus * es, void * aux);
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -49,6 +60,8 @@ process_execute (const char *file_name)
 	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy); 
+	else
+		addChildProc(tid);
 	return tid;
 }
 
@@ -97,8 +110,30 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-	while(1);
-	return -1;
+	int retval = -1;
+
+	// Check Validity of TID - A member of child list
+	if(validCTID(child_tid))
+	{
+		// Check if TID is a member of wait list
+		if(!checkWaitList(child_tid))
+		{
+			struct childproc child;
+			child.childid = child_tid;
+			list_push_back(&thread_current()->wait_list, &child.elem);
+
+			++waitproc;
+			while(!checkCTID(child_tid))
+			{
+				sema_down(&pwait_sema);
+			}
+			--waitproc;
+
+			// Set retval to correct exit status
+			retval = getCTID(child_tid);
+		}
+	}
+	return retval;
 }
 
 /* Free the current process's resources. */
@@ -228,15 +263,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	bool success = false;
 	int i;
 
-	/* Create a copy of the file name for the file opener.
-	   This will fail if there are leading spaces, but that can be
-	   addressed relatively easily if need be. BDH */
+	//char* token;
+	//strlcpy(token, file_name, strlen(file_name) - 1);
+	//char * fname, * save_ptr;
+	//fname = strtok_r(token, " ", &save_ptr);
+
 	char fname[MAX_NAME_LEN];
-	char* s_ptr = (char*) file_name;
+	const char* s_ptr = file_name;
+	i = 0;
+	while(s_ptr[i] == ' ')
+		++i;
 
-	for (i = 0; (fname[i] = s_ptr[i]) != ' '; i++)
-		;
-
+	while(s_ptr[i] != ' ' && s_ptr[i] != '\0')
+	{
+		fname[i] = s_ptr[i];
+		++i;
+	}
 	fname[i] = '\0';
 
 	/* Allocate and activate page directory. */
@@ -331,9 +373,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 	/* push all arguments onto the user stack. BDH */
 	char* str_ptr = (char*) file_name;
+	*esp = PHYS_BASE - 12;
 	int num_bytes = count_bytes(&str_ptr);
 	*esp = push_arguments(num_bytes, str_ptr, file_name);
-	hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
+	//hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
 
 	/***************** ARGS PASSING TEST CODE *******************
 	  char *file_test = "/bin/ls -l foo bar";
@@ -361,7 +404,7 @@ static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
-static bool
+	static bool
 validate_segment (const struct Elf32_Phdr *phdr, struct file *file) 
 {
 	/* p_offset and p_vaddr must have the same page offset. */
@@ -418,7 +461,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool
+	static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
@@ -465,7 +508,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
-static bool
+	static bool
 setup_stack (void **esp) 
 {
 	uint8_t *kpage;
@@ -492,7 +535,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+	static bool
 install_page (void *upage, void *kpage, bool writable)
 {
 	struct thread *t = thread_current ();
@@ -538,8 +581,7 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	int argc = 1;
 	int in_word = 1;
 	char c;
-	// DEBUG
-	//char *stack_ptr = PHYS_BASE + 64;
+
 	char *stack_ptr = PHYS_BASE; // initialize stack pointer for pushing
 	str_ptr++; // increment by one to use usual popping idiom
 
@@ -551,9 +593,6 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 
 	int mod = num_bytes & 3;
 	num_bytes = (mod == 0 ? num_bytes : (num_bytes & ~3) + 4);
-
-	// DEBUG
-	// char **argv_ptr = PHYS_BASE + 64 - num_bytes;
 
 	// set up argv_ptr
 	char **argv_ptr = PHYS_BASE - num_bytes; // start of strings 
@@ -607,3 +646,76 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	return argv_ptr;
 }
 
+bool validCTID(tid_t child_tid)
+{
+	struct list_elem *e;
+	if(thread_current()->numchild > 0)
+	{
+		for (e = list_begin (&thread_current()->child_list); e != list_end (&thread_current()->child_list); e = list_next (e))
+		{
+			struct childproc * c = list_entry (e, struct childproc, elem);
+			if(c->childid == child_tid)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool checkWaitList(tid_t child_tid)
+{
+	struct list_elem *e;
+	if(thread_current()->numchild > 0)
+	{
+		for (e = list_begin (&thread_current()->wait_list); e != list_end (&thread_current()->wait_list); e = list_next (e))
+		{
+			struct childproc * c = list_entry (e, struct childproc, elem);
+			if(c->childid == child_tid)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool checkCTID(tid_t child_tid)
+{
+	struct exitstatus nes;
+	nes.avail = false;
+	nes.status = -1;
+	nes.childid = child_tid;
+	exit_foreach(getExitStatus, (void*) &nes);
+	return nes.avail;
+}
+
+int getCTID(tid_t child_tid)
+{
+	struct exitstatus nes;
+	nes.avail = false;
+	nes.status = -1;
+	nes.childid = child_tid;
+	exit_foreach(getExitStatus, (void*) &nes);
+	return nes.status;
+}
+
+void getExitStatus(struct exitstatus * es, void* aux)
+{
+	struct exitstatus * nes = (struct exitstatus *) aux;
+	if(es->childid == nes->childid)
+	{
+		nes->avail = es->avail;
+		nes->status = es->status;
+	}
+}
+
+void addChildProc(tid_t childid)
+{
+	if(thread_current()->numchild == 0)
+	{
+		list_init(&thread_current()->child_list);
+		list_init(&thread_current()->wait_list);
+	}
+
+	struct childproc child;
+	child.childid = childid;
+	list_push_back(&thread_current()->child_list, &child.elem);
+	++thread_current()->numchild;
+}

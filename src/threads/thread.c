@@ -9,8 +9,8 @@
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
-#include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -183,7 +183,10 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-  list_init (&t->child_list);
+
+  //------------ System Call ------------
+  t->exitset = false;
+  t->exitstatus = -1;
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 

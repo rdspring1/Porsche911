@@ -19,15 +19,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-struct exitstatus
-{
-	bool avail;
-	int status;
-	tid_t childid;
-};
-
 const int MAX_NUM_BYTES = 4080;
+
+// Extern
 unsigned waitproc;
+struct semaphore pwait_sema;
 
 // Additional Function Prototypes
 static int count_bytes(char **str_ptr);
@@ -37,7 +33,7 @@ bool validCTID(tid_t child_tid);
 bool checkWaitList(tid_t child_tid);
 bool checkCTID(tid_t child_tid);
 int getCTID(tid_t child_tid);
-void checkExitStatus(struct thread * t, void * aux);
+void getExitStatus(struct exitstatus * es, void * aux);
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -124,7 +120,9 @@ process_wait (tid_t child_tid)
 
 			++waitproc;
 			while(!checkCTID(child_tid))
+			{
 				sema_down(&pwait_sema);
+			}
 			--waitproc;
 
 			// Set retval to correct exit status
@@ -259,15 +257,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	bool success = false;
 	int i;
 
-	/* Create a copy of the file name for the file opener.
-	   This will fail if there are leading spaces, but that can be
-	   addressed relatively easily if need be. BDH */
+	//char* token;
+	//strlcpy(token, file_name, strlen(file_name) - 1);
+	//char * fname, * save_ptr;
+	//fname = strtok_r(token, " ", &save_ptr);
+
 	char fname[MAX_NAME_LEN];
-	char* s_ptr = (char*) file_name;
+	const char* s_ptr = file_name;
+	i = 0;
+	while(s_ptr[i] == ' ')
+		++i;
 
-	for (i = 0; (fname[i] = s_ptr[i]) != ' '; i++)
-		;
-
+	while(s_ptr[i] != ' ' && s_ptr[i] != '\0')
+	{
+		fname[i] = s_ptr[i];
+		++i;
+	}
 	fname[i] = '\0';
 
 	/* Allocate and activate page directory. */
@@ -362,9 +367,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 	/* push all arguments onto the user stack. BDH */
 	char* str_ptr = (char*) file_name;
+	*esp = PHYS_BASE - 12;
 	int num_bytes = count_bytes(&str_ptr);
 	*esp = push_arguments(num_bytes, str_ptr, file_name);
-	hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
+	//hex_dump((uintptr_t)* esp, *esp, PHYS_BASE - *esp, true);
 
 	/***************** ARGS PASSING TEST CODE *******************
 	  char *file_test = "/bin/ls -l foo bar";
@@ -392,7 +398,7 @@ static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
-static bool
+	static bool
 validate_segment (const struct Elf32_Phdr *phdr, struct file *file) 
 {
 	/* p_offset and p_vaddr must have the same page offset. */
@@ -449,7 +455,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool
+	static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
@@ -496,7 +502,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
-static bool
+	static bool
 setup_stack (void **esp) 
 {
 	uint8_t *kpage;
@@ -523,7 +529,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+	static bool
 install_page (void *upage, void *kpage, bool writable)
 {
 	struct thread *t = thread_current ();
@@ -569,8 +575,7 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 	int argc = 1;
 	int in_word = 1;
 	char c;
-	// DEBUG
-	//char *stack_ptr = PHYS_BASE + 64;
+
 	char *stack_ptr = PHYS_BASE; // initialize stack pointer for pushing
 	str_ptr++; // increment by one to use usual popping idiom
 
@@ -582,9 +587,6 @@ char** push_arguments(int num_bytes, char *str_ptr, const char *base)
 
 	int mod = num_bytes & 3;
 	num_bytes = (mod == 0 ? num_bytes : (num_bytes & ~3) + 4);
-
-	// DEBUG
-	// char **argv_ptr = PHYS_BASE + 64 - num_bytes;
 
 	// set up argv_ptr
 	char **argv_ptr = PHYS_BASE - num_bytes; // start of strings 
@@ -670,45 +672,31 @@ bool checkWaitList(tid_t child_tid)
 
 bool checkCTID(tid_t child_tid)
 {
-	enum intr_level old_level;
-
-	struct exitstatus es;
-	es.avail = false;
-	es.status = -1;
-	es.childid = child_tid;
-
-	old_level = intr_disable();
-
-	thread_foreach(checkExitStatus, (void *) &es);
-
-	intr_set_level (old_level);
-	return es.avail;
+	struct exitstatus nes;
+	nes.avail = false;
+	nes.status = -1;
+	nes.childid = child_tid;
+	exit_foreach(getExitStatus, (void*) &nes);
+	return nes.avail;
 }
 
 int getCTID(tid_t child_tid)
 {
-	enum intr_level old_level;
-
-	struct exitstatus es;
-	es.avail = false;
-	es.status = -1;
-	es.childid = child_tid;
-
-	old_level = intr_disable();
-
-	thread_foreach(checkExitStatus, (void*) &es);
-
-	intr_set_level (old_level);
-	return es.status;
+	struct exitstatus nes;
+	nes.avail = false;
+	nes.status = -1;
+	nes.childid = child_tid;
+	exit_foreach(getExitStatus, (void*) &nes);
+	return nes.status;
 }
 
-void checkExitStatus(struct thread * t, void * aux)
+void getExitStatus(struct exitstatus * es, void* aux)
 {
-	struct exitstatus * es = (struct exitstatus *) aux;
-	if(t->tid == es->childid)
+	struct exitstatus * nes = (struct exitstatus *) aux;
+	if(es->childid == nes->childid)
 	{
-		es->avail = t->exitset;
-		es->status = t->exitstatus;
+		nes->avail = es->avail;
+		nes->status = es->status;
 	}
 }
 
@@ -716,8 +704,8 @@ void addChildProc(tid_t childid)
 {
 	if(thread_current()->numchild == 0)
 	{
-  		list_init(&thread_current()->child_list);
-  		list_init(&thread_current()->wait_list);
+		list_init(&thread_current()->child_list);
+		list_init(&thread_current()->wait_list);
 	}
 
 	struct childproc child;

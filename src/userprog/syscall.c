@@ -3,22 +3,28 @@
 #include "userprog/process.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
 #include "lib/string.h"
 
+// Extern
+unsigned waitproc;
+struct semaphore pwait_sema;
+struct list exit_list;
+
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
 const unsigned CONSOLEREAD = 0;
-unsigned waitproc;
 
 static void syscall_handler (struct intr_frame* frame);
-static void exitcmd(uintptr_t status);
+static void exitcmd(int status);
 
 // User Memory Check
 static bool check_uptr(const void* uptr);
@@ -72,6 +78,8 @@ check_buffer (const char* uptr, unsigned length)
 void
 syscall_init (void) 
 {
+	list_init (&exit_list);
+
 	// Initialize Private Locks
 	sema_init(&pwait_sema, 0);
 	sema_init(&exec_sema, 1);
@@ -126,8 +134,14 @@ syscall_handler (struct intr_frame* frame)
 			break;
 		case SYS_WAIT:  //int wait (pid_t);
 			{
-				printf("Unimplemented Call\n");
-				exitcmd(-1);
+				uintptr_t childid = -1;
+				if(check_uptr(kpaddr_sp))
+					childid = next_value(&kpaddr_sp);
+				else
+					exitcmd(childid);
+			
+				int retval = process_wait((tid_t) childid);
+				frame->eax = retval;
 			}
 			break;
 		case SYS_CREATE:	//bool create (const char *file, unsigned initial_size);
@@ -277,17 +291,39 @@ next_ptr(uintptr_t** sp)
 }
 
 static void
-exitcmd(uintptr_t status)
+exitcmd(int status)
 {
 		// Print Process Termination Message
+		// File Name	
+		char* name = thread_current()->name;
+		char* token, save_ptr;
+		token = strtok_r(name, " ", &save_ptr);
+		putbuf (token, strlen(token));
+
+		char* str1 = ": exit(";
+		putbuf (str1, strlen(str1));
+
+		// ExitStatus
+		char strstatus[32];
+		snprintf(strstatus, 32, "%d", status);
+		putbuf (strstatus, strlen(strstatus));
+
+		char* str2 = ")\n";
+		putbuf (str2, strlen(str2));
+
 		// Save exit status
-		thread_current()->exitset = true;
-		thread_current()->exitstatus = status;
+		struct exitstatus * es = (struct exitstatus *) malloc(sizeof(struct exitstatus));
+		if(es != NULL)
+		{
+			es->avail = true;
+			es->status = status;
+			es->childid = thread_current()->tid;
+			list_push_back(&exit_list, &es->elem);
 
-		unsigned i;
-		for(i = 0; i < waitproc; ++i)
-			sema_up(&pwait_sema);
-
+			unsigned i;
+			for(i = 0; i < waitproc; ++i)
+				sema_up(&pwait_sema);
+		}
 		thread_exit();
 }
 
@@ -324,4 +360,14 @@ sysremove(struct intr_frame* frame, const char* file)
 	frame->eax = result;
 
 	sema_up(&filecreate_sema);
+}
+
+void exit_foreach(exit_action_func * func, void* aux)
+{
+	struct list_elem * e;
+	for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
+	{
+		struct exitstatus * es = list_entry (e, struct exitstatus, elem);
+		func (es, aux);
+	}
 }

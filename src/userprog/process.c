@@ -19,6 +19,7 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/fdt.h"
 
 const int MAX_NUM_BYTES = 4080;
 
@@ -73,6 +74,8 @@ start_process (void *file_name_)
 	char *file_name = file_name_;
 	struct intr_frame if_;
 	bool success;
+
+	thread_current()->fdt = fdt_init();
 
 	/* Initialize interrupt frame and load executable. */
 	memset (&if_, 0, sizeof if_);
@@ -152,6 +155,8 @@ process_exit (void)
 {
 	struct thread *cur = thread_current ();
 	uint32_t *pd;
+
+	fdt_destroy(cur->fdt);
 
 	/* Destroy the current process's page directory and switch back
 	   to the kernel-only page directory. */

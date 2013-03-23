@@ -18,7 +18,8 @@
    a Java ArrayList. The process would be transparent to the caller. */
 int fd_create(struct file *file)
 {
-  ASSERT(file != NULL);
+  if (file == NULL)
+    return -1;
 
   int i;
   fdt_t fdt = thread_current()->fdt;
@@ -36,7 +37,9 @@ int fd_create(struct file *file)
 /* Returns the file associated with the given descriptor */
 struct file *fd_get_file(int fd)
 {
-  ASSERT(0 <= fd && fd < FDT_MAX_FILES);
+  // Return null in case of a problem
+  if (fd < 0 || FDT_MAX_FILES <= fd)
+    return NULL;
 
   return thread_current()->fdt[fd];
 }

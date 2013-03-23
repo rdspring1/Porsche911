@@ -15,9 +15,8 @@
 #include "lib/string.h"
 
 // Extern
-unsigned waitproc;
-struct semaphore pwait_sema;
 struct list exit_list;
+struct list waitproc_list;
 
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
@@ -78,10 +77,10 @@ check_buffer (const char* uptr, unsigned length)
 void
 syscall_init (void) 
 {
+	list_init (&waitproc_list);
 	list_init (&exit_list);
 
 	// Initialize Private Locks
-	sema_init(&pwait_sema, 0);
 	sema_init(&exec_sema, 1);
 	sema_init(&filecreate_sema, 1);
 	sema_init(&fileremove_sema, 1);
@@ -148,7 +147,7 @@ syscall_handler (struct intr_frame* frame)
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
 				unsigned len = strlen(file);
-				if(!check_buffer(file, len) && file == NULL)
+				if(file == NULL || !check_buffer(file, len))
 					exitcmd(-1);
 
 				uintptr_t size = 0;
@@ -296,7 +295,7 @@ exitcmd(int status)
 		// Print Process Termination Message
 		// File Name	
 		char* name = thread_current()->name;
-		char* token, save_ptr;
+		char* token, *save_ptr;
 		token = strtok_r(name, " ", &save_ptr);
 		putbuf (token, strlen(token));
 
@@ -320,9 +319,12 @@ exitcmd(int status)
 			es->childid = thread_current()->tid;
 			list_push_back(&exit_list, &es->elem);
 
-			unsigned i;
-			for(i = 0; i < waitproc; ++i)
-				sema_up(&pwait_sema);
+			struct list_elem * e;
+			for (e = list_begin (&waitproc_list); e != list_end (&waitproc_list); e = list_next (e))
+			{
+				struct waitproc * item = list_entry (e, struct waitproc, elem);
+				sema_up(&item->sema);	
+			}
 		}
 		thread_exit();
 }

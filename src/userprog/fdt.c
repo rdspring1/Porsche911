@@ -52,7 +52,7 @@ struct file *fd_get_file(int fd)
    responsibility. */
 struct file *fd_remove(int fd)
 {
-  if(0 <= fd && fd < FDT_MAX_FILES)
+  if(fd < 0 || fd >= FDT_MAX_FILES)
 	  return NULL;
 
   fdt_t fdt = thread_current()->fdt;

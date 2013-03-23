@@ -413,6 +413,8 @@ sysclose(int fd)
 	struct file *file = fd_remove(fd);
 	if (file != NULL)
 		file_close(file);
+	else
+		sysexit(-1);
 }
 
 static void

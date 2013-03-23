@@ -241,7 +241,7 @@ syscall_handler (struct intr_frame* frame)
 				else
 					exitcmd(-1);
 
-				sysread(frame, fd, file, length);
+				sysread(frame, fd, (void*) file, length);
 			}
 			break;
 		case SYS_WRITE:      
@@ -431,10 +431,9 @@ syscreate(struct intr_frame* frame, const char* file, unsigned size)
 static void
 sysexec(struct intr_frame* frame, const char* file)
 {
-	//while(!sema_try_down(&exec_sema));
-	//	sema_init(&exec_load_sema, 0);
 	lock_acquire(&exec_lock);
 
+	sema_init(&exec_load_sema, 0);
 	tid_t newpid = process_execute(file);
 	sema_down(&exec_load_sema);
 
@@ -448,7 +447,6 @@ sysexec(struct intr_frame* frame, const char* file)
 		frame->eax = TID_ERROR;
 	}
 
-	//sema_up(&exec_sema);
 	lock_release(&exec_lock);
 }
 

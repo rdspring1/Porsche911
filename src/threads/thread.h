@@ -109,8 +109,7 @@ struct thread
 	int numchild;
     struct list child_list;
 	struct list wait_list;
-	bool exitset;
-	int exitstatus;
+	struct file* file;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

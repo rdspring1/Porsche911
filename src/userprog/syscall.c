@@ -351,17 +351,8 @@ next_value(uintptr_t** sp)
 	return value;
 }
 
-	static char*
-next_charptr(uintptr_t** sp)
-{
-	char* charptr = (char*) next_value(sp);
-	if(check_uptr(charptr))
-		return charptr;
-	else
-		return NULL;
-}
 
-	static void*
+static void*
 next_ptr(uintptr_t** sp)
 {
 	void* voidptr = (void*) next_value(sp);
@@ -369,6 +360,12 @@ next_ptr(uintptr_t** sp)
 		return voidptr;
 	else
 		return NULL;
+}
+
+static char*
+next_charptr(uintptr_t** sp)
+{
+	return (char *) next_ptr(sp);
 }
 
 static void

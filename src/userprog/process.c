@@ -21,7 +21,8 @@
 #include "threads/vaddr.h"
 #include "userprog/fdt.h"
 
-const int MAX_NUM_BYTES = 4080;
+#define MAX_NAME_LEN 32
+#define MAX_NUM_BYTES 4080
 
 // Extern
 struct semaphore exec_load_sema;
@@ -154,6 +155,24 @@ void
 process_exit (void)
 {
 	struct thread *cur = thread_current ();
+
+	// Free every child item of the process
+	//struct list_elem * e;
+	//for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); e = list_remove (e))
+	//{
+	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
+	//	free(childitem);
+	//}
+
+	//struct list_elem * e;
+	//for (e = list_begin (&cur->wait_list); e != list_end (&cur->wait_list); e = list_remove (e))
+	//{
+	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
+	//	free(childitem);
+	//}
+
+	file_close(thread_current()->file);
+
 	uint32_t *pd;
 
 	fdt_destroy(cur->fdt);
@@ -174,21 +193,6 @@ process_exit (void)
 		pagedir_activate (NULL);
 		pagedir_destroy (pd);
 	}
-
-	// Free every child item of the process
-	//struct list_elem * e;
-	//for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); e = list_remove (e))
-	//{
-	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
-	//	free(childitem);
-	//}
-
-	//struct list_elem * e;
-	//for (e = list_begin (&cur->wait_list); e != list_end (&cur->wait_list); e = list_remove (e))
-	//{
-	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
-	//	free(childitem);
-	//}
 }
 
 /* Sets up the CPU for running user code in the current thread.
@@ -273,10 +277,6 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
 		bool writable);
 
-/* nothing special about this number, but seems like a reasonable limit
-   especially since filenames are limited to 14 chars */
-#define MAX_NAME_LEN 32
-
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
@@ -289,11 +289,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
-	int i;
+	int i = 0;
 
 	char fname[MAX_NAME_LEN];
 	const char* s_ptr = file_name;
-	i = 0;
 	while(s_ptr[i] == ' ')
 		++i;
 
@@ -303,7 +302,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 		++i;
 	}
 	fname[i] = '\0';
-
+	
 	/* Allocate and activate page directory. */
 	t->pagedir = pagedir_create ();
 	if (t->pagedir == NULL) 
@@ -421,7 +420,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if(!success)
+	{
+		file_close (file);
+	}
+	else
+	{
+		thread_current()->file = file;
+		file_deny_write(thread_current()->file);
+	}
 	return success;
 }
 

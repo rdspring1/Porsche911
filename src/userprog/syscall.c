@@ -29,7 +29,6 @@ const unsigned CONSOLEWRITE = 1;
 const unsigned CONSOLEREAD = 0;
 
 static void syscall_handler (struct intr_frame* frame);
-static void exitcmd(unsigned status);
 
 // User Memory Check
 static bool check_uptr(const void* uptr);
@@ -117,7 +116,7 @@ syscall_handler (struct intr_frame* frame)
 	if(check_uptr(kpaddr_sp))
 		syscall_num = next_value(&kpaddr_sp);
 	else
-		exitcmd(-1);
+		sysexit(-1);
 
 	switch(syscall_num)
 	{
@@ -132,18 +131,18 @@ syscall_handler (struct intr_frame* frame)
 				uintptr_t status = -1;
 				if(check_uptr(kpaddr_sp))
 					status = next_value(&kpaddr_sp);
-				exitcmd(status);
+				sysexit(status);
 			}
 			break;
 		case SYS_EXEC:  //pid_t exec (const char *file);
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 				else
 					sysexec(frame, file);
 			}
@@ -154,7 +153,7 @@ syscall_handler (struct intr_frame* frame)
 				if(check_uptr(kpaddr_sp))
 					childid = next_value(&kpaddr_sp);
 				else
-					exitcmd(childid);
+					sysexit(childid);
 			
 				int retval = process_wait((tid_t) childid);
 				frame->eax = retval;
@@ -164,17 +163,17 @@ syscall_handler (struct intr_frame* frame)
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 
 				uintptr_t size = 0;
 				if(check_uptr(kpaddr_sp))
 					size = next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				syscreate(frame, file, size);
 			}
@@ -183,11 +182,11 @@ syscall_handler (struct intr_frame* frame)
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 
 				sysremove(frame, file);
 			}
@@ -197,11 +196,11 @@ syscall_handler (struct intr_frame* frame)
 				//int open (const char *file);
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 
 	      		sysopen(frame, file);
 			}
@@ -213,7 +212,7 @@ syscall_handler (struct intr_frame* frame)
 	      		if (check_uptr(kpaddr_sp))
 					fd = (int) next_value(&kpaddr_sp);
 	      		else
-					exitcmd(-1);
+					sysexit(-1);
 
 	      		sysfilesize(frame, fd);
 			}
@@ -225,21 +224,21 @@ syscall_handler (struct intr_frame* frame)
 				if (check_uptr(kpaddr_sp))
 					fd = (int) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned length = 0;
 				if (check_uptr(kpaddr_sp))
 					length = (unsigned) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				sysread(frame, fd, (void*) file, length);
 			}
@@ -251,21 +250,21 @@ syscall_handler (struct intr_frame* frame)
 				if(check_uptr(kpaddr_sp))
 					fd = next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				const char* file =  next_charptr(&kpaddr_sp);
 				if(file == NULL)
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned len = strlen(file);
 				if(!check_buffer(file, len))
-					exitcmd(-1);
+					sysexit(-1);
 
 				uintptr_t length = 0;
 				if(check_uptr(kpaddr_sp))
 					length = next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				if(fd == CONSOLEWRITE) // Write to Console
 				{
@@ -297,13 +296,13 @@ syscall_handler (struct intr_frame* frame)
 				if (check_uptr(kpaddr_sp))
 					fd = (int) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				unsigned position = 0;
 				if (check_uptr(kpaddr_sp))
 					position = (unsigned) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				sysseek(fd, position);
 			}
@@ -315,7 +314,7 @@ syscall_handler (struct intr_frame* frame)
 				if (check_uptr(kpaddr_sp))
 					fd = (int) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				systell(frame, fd);
 			}
@@ -327,7 +326,7 @@ syscall_handler (struct intr_frame* frame)
 				if (check_uptr(kpaddr_sp))
 					fd = (int) next_value(&kpaddr_sp);
 				else
-					exitcmd(-1);
+					sysexit(-1);
 
 				sysclose(fd);
 			}
@@ -335,7 +334,7 @@ syscall_handler (struct intr_frame* frame)
 		default:
 			{
 				printf("Unrecognized System Call\n");
-				exitcmd(-1);
+				sysexit(-1);
 			}
 			break;
 	}
@@ -368,8 +367,8 @@ next_charptr(uintptr_t** sp)
 	return (char *) next_ptr(sp);
 }
 
-static void
-exitcmd(unsigned status)
+void
+sysexit(int status)
 {
 	// Print Process Termination Message
 	// File Name	

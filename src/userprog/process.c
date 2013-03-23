@@ -25,6 +25,7 @@ const int MAX_NUM_BYTES = 4080;
 // Extern
 struct semaphore exec_load_sema;
 struct list waitproc_list;
+bool exec_load_status;
 
 // Additional Function Prototypes
 static int count_bytes(char **str_ptr);
@@ -58,7 +59,6 @@ process_execute (const char *file_name)
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-	sema_down(&exec_load_sema);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy); 
 	else
@@ -85,10 +85,8 @@ start_process (void *file_name_)
 	palloc_free_page (file_name);
 	if (!success) 
 	{
-		thread_current()->tid = TID_ERROR;
 		thread_exit ();
 	}
-	sema_up(&exec_load_sema);
 
 	/* Start the user process by simulating a return from an
 	   interrupt, implemented by intr_exit (in
@@ -312,8 +310,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	if (file == NULL) 
 	{
 		printf ("load: %s: open failed\n", file_name);
+		exec_load_status = false;
+		sema_up(&exec_load_sema);
 		goto done; 
 	}
+	exec_load_status = true;
+	sema_up(&exec_load_sema);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr

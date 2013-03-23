@@ -18,6 +18,7 @@
 struct list exit_list;
 struct list waitproc_list;
 struct semaphore exec_load_sema;
+bool exec_load_status;
 
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
@@ -341,14 +342,21 @@ static void
 sysexec(struct intr_frame* frame, const char* file)
 {
 	while(!sema_try_down(&exec_sema));
+	sema_init(&exec_load_sema, 0);
 
 	tid_t newpid = process_execute(file);
-	printf("-------------- RESULT: %d ---------------\n", newpid);
-	frame->eax = newpid;
-	if(newpid != TID_ERROR)
+	sema_down(&exec_load_sema);
+
+	if(exec_load_status)
+	{
+		frame->eax = newpid;
 		addChildProc(newpid);
+	}
 	else
-		exitcmd(-1);
+	{
+		frame->eax = TID_ERROR;
+	}
+
 	sema_up(&exec_sema);
 }
 

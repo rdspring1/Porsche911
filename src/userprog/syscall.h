@@ -6,6 +6,7 @@
 
 extern struct list waitproc_list;
 extern struct semaphore exec_load_sema;
+extern bool exec_load_status;
 
 struct waitproc
 {

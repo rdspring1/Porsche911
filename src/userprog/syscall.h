@@ -4,8 +4,16 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 
-extern unsigned waitproc;
-extern struct semaphore pwait_sema;
+extern struct list waitproc_list;
+extern struct semaphore exec_load_sema;
+extern bool exec_load_status;
+
+struct waitproc
+{
+	struct semaphore sema;
+	tid_t id;
+	struct list_elem elem; 
+};
 
 void syscall_init (void);
 

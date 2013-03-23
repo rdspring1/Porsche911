@@ -16,6 +16,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/fdt.h"
@@ -23,8 +24,9 @@
 const int MAX_NUM_BYTES = 4080;
 
 // Extern
-unsigned waitproc;
-struct semaphore pwait_sema;
+struct semaphore exec_load_sema;
+struct list waitproc_list;
+bool exec_load_status;
 
 // Additional Function Prototypes
 static int count_bytes(char **str_ptr);
@@ -85,7 +87,9 @@ start_process (void *file_name_)
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success) 
+	{
 		thread_exit ();
+	}
 
 	/* Start the user process by simulating a return from an
 	   interrupt, implemented by intr_exit (in
@@ -117,16 +121,26 @@ process_wait (tid_t child_tid)
 		// Check if TID is a member of wait list
 		if(!checkWaitList(child_tid))
 		{
-			struct childproc child;
-			child.childid = child_tid;
-			list_push_back(&thread_current()->wait_list, &child.elem);
-
-			++waitproc;
-			while(!checkCTID(child_tid))
+			struct childproc * child = (struct childproc *) malloc(sizeof(struct childproc));
+			if(child != NULL)
 			{
-				sema_down(&pwait_sema);
+				child->childid = child_tid;
+				list_push_back(&thread_current()->wait_list, &child->elem);
 			}
-			--waitproc;
+
+			struct waitproc * wp = (struct waitproc *) malloc(sizeof(struct waitproc));
+			if(wp != NULL)
+			{
+				wp->id = thread_current()->tid;
+				sema_init(&wp->sema, 0);
+				list_push_back(&waitproc_list, &wp->elem);
+				while(!checkCTID(child_tid))
+				{
+					sema_down(&wp->sema);
+				}
+			}
+			list_remove(&wp->elem);
+			free(wp);
 
 			// Set retval to correct exit status
 			retval = getCTID(child_tid);
@@ -160,6 +174,21 @@ process_exit (void)
 		pagedir_activate (NULL);
 		pagedir_destroy (pd);
 	}
+
+	// Free every child item of the process
+	//struct list_elem * e;
+	//for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); e = list_remove (e))
+	//{
+	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
+	//	free(childitem);
+	//}
+
+	//struct list_elem * e;
+	//for (e = list_begin (&cur->wait_list); e != list_end (&cur->wait_list); e = list_remove (e))
+	//{
+	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
+	//	free(childitem);
+	//}
 }
 
 /* Sets up the CPU for running user code in the current thread.
@@ -262,11 +291,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	bool success = false;
 	int i;
 
-	//char* token;
-	//strlcpy(token, file_name, strlen(file_name) - 1);
-	//char * fname, * save_ptr;
-	//fname = strtok_r(token, " ", &save_ptr);
-
 	char fname[MAX_NAME_LEN];
 	const char* s_ptr = file_name;
 	i = 0;
@@ -291,8 +315,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	if (file == NULL) 
 	{
 		printf ("load: %s: open failed\n", file_name);
+		exec_load_status = false;
+		sema_up(&exec_load_sema);
 		goto done; 
 	}
+	exec_load_status = true;
+	sema_up(&exec_load_sema);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -713,8 +741,11 @@ void addChildProc(tid_t childid)
 		list_init(&thread_current()->wait_list);
 	}
 
-	struct childproc child;
-	child.childid = childid;
-	list_push_back(&thread_current()->child_list, &child.elem);
-	++thread_current()->numchild;
+	struct childproc * child = (struct childproc *) malloc(sizeof(struct childproc));
+	if(child != NULL)
+	{
+		child->childid = childid;
+		list_push_back(&thread_current()->child_list, &child->elem);
+		++thread_current()->numchild;
+	}
 }

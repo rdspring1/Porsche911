@@ -23,6 +23,7 @@
 const int MAX_NUM_BYTES = 4080;
 
 // Extern
+struct semaphore exec_load_sema;
 struct list waitproc_list;
 
 // Additional Function Prototypes
@@ -57,6 +58,7 @@ process_execute (const char *file_name)
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+	sema_down(&exec_load_sema);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy); 
 	else
@@ -82,7 +84,11 @@ start_process (void *file_name_)
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success) 
+	{
+		thread_current()->tid = TID_ERROR;
 		thread_exit ();
+	}
+	sema_up(&exec_load_sema);
 
 	/* Start the user process by simulating a return from an
 	   interrupt, implemented by intr_exit (in

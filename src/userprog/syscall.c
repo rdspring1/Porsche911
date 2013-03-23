@@ -17,6 +17,7 @@
 // Extern
 struct list exit_list;
 struct list waitproc_list;
+struct semaphore exec_load_sema;
 
 const unsigned MAX_SIZE = 256;
 const unsigned CONSOLEWRITE = 1;
@@ -81,6 +82,7 @@ syscall_init (void)
 	list_init (&exit_list);
 
 	// Initialize Private Locks
+	sema_init(&exec_load_sema, 0);
 	sema_init(&exec_sema, 1);
 	sema_init(&filecreate_sema, 1);
 	sema_init(&fileremove_sema, 1);
@@ -123,9 +125,12 @@ syscall_handler (struct intr_frame* frame)
 			break;
 		case SYS_EXEC:  //pid_t exec (const char *file);
 			{
-				const char* file = next_charptr(&kpaddr_sp);
+				const char* file =  next_charptr(&kpaddr_sp);
+				if(file == NULL)
+					exitcmd(-1);
+
 				unsigned len = strlen(file);
-				if(!check_buffer(file, len) && file == NULL)
+				if(!check_buffer(file, len))
 					exitcmd(-1);
 				else
 					sysexec(frame, file);
@@ -146,8 +151,11 @@ syscall_handler (struct intr_frame* frame)
 		case SYS_CREATE:	//bool create (const char *file, unsigned initial_size);
 			{
 				const char* file =  next_charptr(&kpaddr_sp);
+				if(file == NULL)
+					exitcmd(-1);
+
 				unsigned len = strlen(file);
-				if(file == NULL || !check_buffer(file, len))
+				if(!check_buffer(file, len))
 					exitcmd(-1);
 
 				uintptr_t size = 0;
@@ -335,10 +343,12 @@ sysexec(struct intr_frame* frame, const char* file)
 	while(!sema_try_down(&exec_sema));
 
 	tid_t newpid = process_execute(file);
+	printf("-------------- RESULT: %d ---------------\n", newpid);
 	frame->eax = newpid;
 	if(newpid != TID_ERROR)
 		addChildProc(newpid);
-	
+	else
+		exitcmd(-1);
 	sema_up(&exec_sema);
 }
 

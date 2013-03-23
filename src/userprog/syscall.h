@@ -5,6 +5,7 @@
 #include "threads/synch.h"
 
 extern struct list waitproc_list;
+extern struct semaphore exec_load_sema;
 
 struct waitproc
 {

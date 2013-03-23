@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "userprog/fdt.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -117,6 +118,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    fdt_t fdt;                          /* File Descriptor Table */
 #endif
 
     /* Owned by thread.c. */

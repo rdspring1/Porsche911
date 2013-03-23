@@ -2,6 +2,7 @@
 #include "filesys/file.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
+#include "userprog/fdt.h"
 
 /* Slots 0 and 1 in the array of struct file * should always be
    reserved for stdin and stdout. I'm unsure of how to actually
@@ -17,6 +18,9 @@
    a Java ArrayList. The process would be transparent to the caller. */
 int fd_create(struct file *file)
 {
+  ASSERT(file != NULL);
+
+  int i;
   fdt_t fdt = thread_current()->fdt;
 
   // initialized to 2 "leave space" for stdin and stdout
@@ -68,7 +72,7 @@ void fdt_destroy(fdt_t fdt)
 
 /* Creates a new null-initialized file descriptor table. We are
    making a slight assumption that NULL is indeed 0. */
-fdt_t fdt_init(int num_entries)
+fdt_t fdt_init()
 {
-  return (fdt_t) calloc(num_entries, sizeof(struct file *));
+  return (fdt_t) calloc(FDT_MAX_FILES, sizeof(struct file *));
 }

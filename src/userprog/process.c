@@ -138,8 +138,8 @@ process_wait (tid_t child_tid)
 				while(!checkCTID(child_tid))
 				{
 					sema_down(&wp->sema);
-					//printf("RELEASED %d : %d\n", thread_current()->tid, child_tid);
 				}
+				//printf("RELEASED %d : %d\n", thread_current()->tid, child_tid);
 			}
 			list_remove(&wp->elem);
 			free(wp);
@@ -170,11 +170,9 @@ process_exit (void)
 	}
 
 	file_close(thread_current()->file);
-
-	uint32_t *pd;
-
 	fdt_destroy(cur->fdt);
 
+	uint32_t *pd;
 	/* Destroy the current process's page directory and switch back
 	   to the kernel-only page directory. */
 	pd = cur->pagedir;
@@ -304,7 +302,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	/* Allocate and activate page directory. */
 	t->pagedir = pagedir_create ();
 	if (t->pagedir == NULL) 
+	{
 		goto done;
+	}
 	process_activate ();
 
 	/* Open executable file. */
@@ -312,12 +312,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 	if (file == NULL) 
 	{
 		printf ("load: %s: open failed\n", file_name);
-		exec_load_status = false;
-		sema_up(&exec_load_sema);
 		goto done; 
 	}
-	exec_load_status = true;
-	sema_up(&exec_load_sema);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -421,11 +417,15 @@ done:
 	if(!success)
 	{
 		file_close (file);
+		exec_load_status = false;
+		sema_up(&exec_load_sema);
 	}
 	else
 	{
 		thread_current()->file = file;
 		file_deny_write(thread_current()->file);
+		exec_load_status = true;
+		sema_up(&exec_load_sema);
 	}
 	return success;
 }

@@ -39,7 +39,6 @@ spawn_child (int c, enum child_termination_mode mode)
   char child_cmd[128];
   snprintf (child_cmd, sizeof child_cmd,
             "%s %d %s", test_name, c, mode == CRASH ? "-k" : "");
-  //msg("NEXT CMD %s", child_cmd);
   return exec (child_cmd);
 }
 
@@ -122,6 +121,7 @@ main (int argc, char *argv[])
   int howmany = is_at_root ? EXPECTED_REPETITIONS : 1;
   int i, expected_depth = -1;
 
+  //msg("CALL %d\n", n);
   for (i = 0; i < howmany; i++)
     {
       pid_t child_pid;

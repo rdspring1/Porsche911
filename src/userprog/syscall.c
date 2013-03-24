@@ -583,8 +583,6 @@ syswrite(struct intr_frame *frame, int fd, const void *buffer, unsigned size)
 
 bool exit_remove(tid_t id)
 {
-	bool found = false;
-	struct list_elem * find = NULL;
 	struct list_elem * e;
 	for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
 	{
@@ -601,8 +599,6 @@ bool exit_remove(tid_t id)
 
 bool ignore_remove(tid_t id)
 {
-	bool found = false;
-	struct list_elem * find = NULL;
 	struct list_elem * e;
 	for (e = list_begin (&ignore_list); e != list_end (&ignore_list); e = list_next (e))
 	{

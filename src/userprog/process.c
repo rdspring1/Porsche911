@@ -138,6 +138,7 @@ process_wait (tid_t child_tid)
 				while(!checkCTID(child_tid))
 				{
 					sema_down(&wp->sema);
+					//printf("RELEASED %d : %d\n", thread_current()->tid, child_tid);
 				}
 			}
 			list_remove(&wp->elem);
@@ -156,20 +157,17 @@ process_exit (void)
 {
 	struct thread *cur = thread_current ();
 
-	// Free every child item of the process
-	//struct list_elem * e;
-	//for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); e = list_remove (e))
-	//{
-	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
-	//	free(childitem);
-	//}
-
-	//struct list_elem * e;
-	//for (e = list_begin (&cur->wait_list); e != list_end (&cur->wait_list); e = list_remove (e))
-	//{
-	//	struct childproc * childitem = list_entry (e, struct childproc, elem);
-	//	free(childitem);
-	//}
+	if(thread_current()->numchild > 0)
+	{
+		// Free every wait item of the process
+		struct list_elem * e;
+		while (!list_empty(&cur->wait_list))
+		{
+			e = list_pop_front(&cur->wait_list);
+			struct childproc * childitem = list_entry (e, struct childproc, elem);
+			free(childitem);
+		}
+	}
 
 	file_close(thread_current()->file);
 
@@ -197,7 +195,7 @@ process_exit (void)
 
 /* Sets up the CPU for running user code in the current thread.
    This function is called on every context switch. */
-void
+	void
 process_activate (void)
 {
 	struct thread *t = thread_current ();
@@ -281,7 +279,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool
+	bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
 	struct thread *t = thread_current ();
@@ -302,7 +300,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 		++i;
 	}
 	fname[i] = '\0';
-	
+
 	/* Allocate and activate page directory. */
 	t->pagedir = pagedir_create ();
 	if (t->pagedir == NULL) 

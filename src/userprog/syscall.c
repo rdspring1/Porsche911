@@ -25,10 +25,15 @@ struct list waitproc_list;
 struct semaphore exec_load_sema;
 bool exec_load_status;
 
+// GLOBALS
+struct list ignore_list;
+
 const unsigned CONSOLEWRITE = 1;
 const unsigned CONSOLEREAD = 0;
 
 static void syscall_handler (struct intr_frame* frame);
+bool exit_remove(tid_t id);
+bool ignore_remove(tid_t id);
 
 // User Memory Check
 static bool check_uptr(const void* uptr);
@@ -89,6 +94,7 @@ check_buffer (const char* uptr, unsigned length)
 void
 syscall_init (void) 
 {
+	list_init (&ignore_list);
 	list_init (&waitproc_list);
 	list_init (&exit_list);
 
@@ -340,7 +346,7 @@ syscall_handler (struct intr_frame* frame)
 	}
 }
 
-	static uintptr_t
+static uintptr_t
 next_value(uintptr_t** sp)
 {
 	uintptr_t* ptr = *sp;
@@ -388,9 +394,28 @@ sysexit(int status)
 	char* str2 = ")\n";
 	putbuf (str2, strlen(str2));
 
+	// EXIT Child Processes
+	if(thread_current()->numchild > 0)
+	{
+		struct list_elem * e;
+		while (!list_empty(&thread_current()->child_list))
+		{
+			e = list_pop_front(&thread_current()->child_list);
+			struct childproc * childitem = list_entry (e, struct childproc, elem);
+			if(!exit_remove(childitem->childid))
+			{
+				list_push_back(&ignore_list, &childitem->elem);
+			}
+			else
+			{
+				free(childitem);
+			}
+		}
+	}
+
 	// Save exit status
 	struct exitstatus * es = (struct exitstatus *) malloc(sizeof(struct exitstatus));
-	if(es != NULL)
+	if(es != NULL && !ignore_remove(thread_current()->tid))
 	{
 		es->avail = true;
 		es->status = status;
@@ -554,6 +579,42 @@ syswrite(struct intr_frame *frame, int fd, const void *buffer, unsigned size)
 	{
 		user_return( file_write(file, buffer, size) );
 	}
+}
+
+bool exit_remove(tid_t id)
+{
+	bool found = false;
+	struct list_elem * find = NULL;
+	struct list_elem * e;
+	for (e = list_begin (&exit_list); e != list_end (&exit_list); e = list_next (e))
+	{
+		struct exitstatus * es = list_entry (e, struct exitstatus, elem);
+		if(es->childid == id)
+		{
+			list_remove(e);
+			free(es);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ignore_remove(tid_t id)
+{
+	bool found = false;
+	struct list_elem * find = NULL;
+	struct list_elem * e;
+	for (e = list_begin (&ignore_list); e != list_end (&ignore_list); e = list_next (e))
+	{
+		struct childproc * es = list_entry (e, struct childproc, elem);
+		if(es->childid == id)
+		{
+			list_remove(es);
+			free(es);
+			return true;
+		}
+	}
+	return false;
 }
 
 void 
